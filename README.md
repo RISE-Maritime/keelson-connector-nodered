@@ -1,6 +1,6 @@
 # Keelson Connector for Node-RED
 
-A complete Docker Compose setup for bi-directional integration of Keelson (Zenoh) via MQTT with Node-RED, including custom nodes for handling Keelson protocol envelopes.
+A complete Docker Compose setup for bi-directional integration of Keelson (Zenoh) via MQTT with Node-RED, powered by the official Keelson JavaScript SDK.
 
 ## Overview
 
@@ -8,16 +8,16 @@ This project provides a ready-to-use environment that combines:
 
 - **Zenoh MQTT Bridge** - Running in standalone mode to bridge Zenoh and MQTT protocols
 - **Node-RED** - Visual flow programming with custom Keelson nodes
-- **Keelson Proto Definitions** - Embedded protobuf schemas from the Keelson project
-- **Custom Node-RED Nodes** - Pre-built nodes for packing/unpacking Keelson envelopes
+- **Keelson JS SDK** - Official SDK for envelope handling, protobuf encoding/decoding, and key management
+- **Custom Node-RED Nodes** - Pre-built nodes leveraging the SDK for seamless Keelson integration
 
 ## Architecture
 
 ```
 ┌─────────────────┐         ┌──────────────────┐         ┌─────────────┐
 │   Zenoh/MQTT    │◄───────►│  Zenoh-MQTT      │◄───────►│  Node-RED   │
-│   Publishers    │         │  Bridge          │         │  Flows      │
-│   Subscribers   │         │  (Port 1883)     │         │  (Port 1880)│
+│   Publishers    │         │  Bridge          │         │  + Keelson  │
+│   Subscribers   │         │  (Port 1883)     │         │  JS SDK     │
 └─────────────────┘         └──────────────────┘         └─────────────┘
                                    ▲                            │
                                    │                            │
@@ -33,17 +33,19 @@ This project provides a ready-to-use environment that combines:
 - Zenoh peer connectivity on port 7447
 - Optional REST API on port 8000 for monitoring
 
-### Node-RED Integration
+### Node-RED Integration with Keelson SDK
 - Custom **keelson-subscribe** node for receiving and unpacking envelopes
 - Custom **keelson-publish** node for packing and publishing envelopes
-- Full protobuf support with all Keelson message definitions
+- Built on official **keelson-js** SDK (v0.4.4+)
+- Automatic key parsing and validation
 - Visual flow programming interface
 
-### Keelson Protocol Support
+### Keelson Protocol Support (via SDK)
 - Envelope wrapping/unwrapping with timestamps
-- Support for all Keelson payload types (Alarm, Audio, Primitives, etc.)
-- Automatic key space convention handling
-- Timestamp preservation (enclosed_at)
+- Complete protobuf support (all message definitions included in SDK)
+- Key space construction and parsing utilities
+- Subject validation against well-known subjects
+- Type-safe encoding/decoding
 
 ## Quick Start
 
@@ -84,7 +86,7 @@ docker-compose down -v
 
 ### Keelson Subscribe Node
 
-Subscribes to an MQTT topic and automatically unpacks Keelson envelopes.
+Subscribes to an MQTT topic and automatically unpacks Keelson envelopes using the SDK.
 
 **Configuration:**
 - **Broker**: MQTT broker hostname (default: `zenoh-mqtt-bridge`)
@@ -98,17 +100,21 @@ Subscribes to an MQTT topic and automatically unpacks Keelson envelopes.
   topic: "vessel/@v1/entity_id/pubsub/rudder_angle_deg/rudder",
   payload: <Buffer ...>,  // Unpacked protobuf payload
   envelope: {
-    enclosedAt: {
-      seconds: 1699876543,
-      nanos: 123456000
-    }
+    enclosedAt: Date,      // When the envelope was created
+    receivedAt: Date       // When the envelope was received (optional)
+  },
+  keelson: {
+    basePath: "vessel",
+    entityId: "entity_id",
+    subject: "rudder_angle_deg",
+    sourceId: "rudder"
   }
 }
 ```
 
 ### Keelson Publish Node
 
-Wraps payload in a Keelson envelope and publishes to MQTT.
+Wraps payload in a Keelson envelope and publishes to MQTT using the SDK.
 
 **Configuration:**
 - **Broker**: MQTT broker hostname (default: `zenoh-mqtt-bridge`)
@@ -121,7 +127,8 @@ Wraps payload in a Keelson envelope and publishes to MQTT.
 ```javascript
 {
   payload: <Buffer ...>,  // Serialized protobuf message or raw data
-  topic: "vessel/@v1/entity_id/pubsub/subject/source"  // Optional override
+  topic: "vessel/@v1/entity_id/pubsub/subject/source",  // Optional override
+  enclosedAt: Date        // Optional: specify envelope timestamp
 }
 ```
 
@@ -138,6 +145,7 @@ Here's a simple example flow that receives data, processes it, and republishes:
 The function node could transform the data:
 ```javascript
 // Example: Pass through with logging
+node.log(`Received from ${msg.keelson.subject} on ${msg.keelson.entityId}`);
 msg.payload = msg.payload;
 return msg;
 ```
@@ -150,36 +158,69 @@ All topics follow the Keelson key space hierarchy:
 {base_path}/@v{major_version}/{entity_id}/pubsub/{subject}/{source_id}
 ```
 
+The SDK provides utilities for key construction and parsing:
+
+```javascript
+const { construct_pubSub_key, parse_pubsub_key } = require('keelson-js');
+
+// Construct a key
+const key = construct_pubSub_key({
+  basePath: "vessel",
+  majorVersion: 1,
+  entityId: "my_boat",
+  subject: "rudder_angle_deg",
+  sourceId: "rudder"
+});
+// Returns: "vessel/@v1/my_boat/pubsub/rudder_angle_deg/rudder"
+
+// Parse a key
+const parts = parse_pubsub_key(key);
+// Returns: { basePath, entityId, subject, sourceId }
+```
+
 **Example topics:**
 - `vessel/@v1/my_boat/pubsub/rudder_angle_deg/rudder`
 - `shore/@v1/station_1/pubsub/raw_image/camera/rgb/0`
 - `buoy/@v1/buoy_42/pubsub/wave_height_m/sensor`
 
-## Proto Definitions
+## Keelson JS SDK
 
-The following Keelson proto definitions are included:
+This project uses the official [keelson-js](https://www.npmjs.com/package/keelson-js) SDK, which provides:
 
-### Core
-- `Envelope.proto` - Message envelope wrapper
+### Envelope Management
+- `enclose(payload, enclosed_at?)` - Wraps payload in envelope
+- `uncover(encodedEnvelope)` - Unwraps envelope, returns `[Date, Date|undefined, Uint8Array]`
+- `encloseFromTypeName(typeName, payload)` - Encodes AND encloses in one step
 
-### Payloads
-- `Primitives.proto` - Basic data types (floats, ints, strings)
-- `Alarm.proto` - Alarm messages
-- `Audio.proto` - Audio data
-- `Decomposed3DVector.proto` - 3D vector data
-- `FlagCode.proto` - Flag code enumerations
-- `Geojson.proto` - Geographic data
-- `LocationFixQuality.proto` - GPS fix quality
-- `NetworkStatus.proto` - Network status
-- `RadarReading.proto` - Radar data
-- `ROCStatus.proto` - Rate of change status
-- `SensorStatus.proto` - Sensor status
-- `SimulationStatus.proto` - Simulation state
-- `TargetType.proto` - Target classifications
-- `VesselNavStatus.proto` - Vessel navigation
-- `VesselType.proto` - Vessel classifications
+### Payload Operations
+- `encodePayloadFromTypeName(typeName, payload)` - Encodes typed objects
+- `decodePayloadFromTypeName(typeName, encoded)` - Decodes payloads
+- `getProtobufClassFromTypeName(typeName)` - Access protobuf classes
 
-All proto files are located in `/usr/src/node-red/protos/` inside the Node-RED container.
+### Key Utilities
+- `construct_pubSub_key()` - Build Keelson pub/sub keys
+- `parse_pubsub_key()` - Parse keys into components
+- `construct_rpc_key()` / `parse_rpc_key()` - RPC key management
+- `get_subject_from_pubsub_key()` - Extract subject
+
+### Subject Validation
+- `isSubjectWellKnown(subject)` - Validate against registry
+- `getSubjectSchema(subject)` - Get schema for known subjects
+
+### Included Protobuf Definitions
+
+The SDK includes all Keelson message definitions:
+
+**Core:**
+- Envelope - Message envelope wrapper
+
+**Payloads:**
+- Primitives - Basic data types
+- Alarm, Audio, Geojson - Common data types
+- RadarReading, VesselNavStatus, VesselType - Maritime-specific
+- And more...
+
+See the [Keelson repository](https://github.com/RISE-Maritime/keelson/tree/main/messages) for complete proto definitions.
 
 ## Development
 
@@ -204,14 +245,26 @@ docker-compose build node-red
 docker-compose up -d node-red
 ```
 
-### Adding New Proto Definitions
+### Using SDK Functions in Function Nodes
 
-1. Add proto files to `protos/` or `protos/payloads/`
-2. Rebuild the container:
-   ```bash
-   docker-compose build node-red
-   docker-compose up -d node-red
-   ```
+You can access the Keelson SDK directly in Node-RED function nodes:
+
+```javascript
+const keelson = global.get('keelson') || require('keelson-js');
+
+// Example: Encode a payload with a type
+const encoded = keelson.encodePayloadFromTypeName('payloads.FloatValue', {
+    value: 42.5
+});
+
+// Example: Validate a subject
+if (keelson.isSubjectWellKnown('rudder_angle_deg')) {
+    const schema = keelson.getSubjectSchema('rudder_angle_deg');
+}
+
+msg.payload = encoded;
+return msg;
+```
 
 ### Persistent Data
 
@@ -262,19 +315,20 @@ Verify nodes are installed:
 docker-compose exec node-red npm list node-red-contrib-keelson-envelope
 ```
 
-### Proto Loading Errors
+### SDK Loading Errors
 
-Ensure proto files are correctly mounted:
+Verify the SDK is installed:
 ```bash
-docker-compose exec node-red ls -la /usr/src/node-red/protos/
+docker-compose exec node-red npm list keelson-js
 ```
 
 ## References
 
 - [Keelson Protocol Specification](https://github.com/RISE-Maritime/keelson/blob/main/docs/protocol-specification.md)
+- [Keelson JS SDK](https://www.npmjs.com/package/keelson-js)
+- [Keelson GitHub Repository](https://github.com/RISE-Maritime/keelson)
 - [Zenoh MQTT Bridge](https://github.com/eclipse-zenoh/zenoh-plugin-mqtt)
 - [Node-RED Documentation](https://nodered.org/docs/)
-- [Protocol Buffers](https://developers.google.com/protocol-buffers)
 
 ## License
 

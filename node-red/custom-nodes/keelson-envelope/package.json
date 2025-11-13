@@ -17,7 +17,7 @@
     }
   },
   "dependencies": {
-    "protobufjs": "^7.2.5",
+    "keelson-js": "^0.4.4",
     "mqtt": "^5.3.0"
   },
   "author": "RISE Maritime",

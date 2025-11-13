@@ -1,6 +1,6 @@
 # Usage Examples
 
-This directory contains example Node-RED flows demonstrating how to use the Keelson nodes.
+This directory contains example Node-RED flows demonstrating how to use the Keelson nodes powered by the official Keelson JS SDK.
 
 ## Importing the Example Flow
 
@@ -30,9 +30,12 @@ The example flow includes two demonstrations:
 This flow demonstrates the complete cycle of receiving and sending Keelson messages:
 
 1. **Keelson Subscribe** - Subscribes to `vessel/@v1/my_boat/pubsub/rudder_angle_deg/rudder`
+   - Automatically unpacks envelopes using the SDK
+   - Provides parsed key components in `msg.keelson`
 2. **Debug** - Displays received messages in the debug panel
 3. **Function** - Processes the data (you can add your own logic here)
 4. **Keelson Publish** - Republishes to `vessel/@v1/my_boat/pubsub/processed_data/processor`
+   - Automatically wraps in envelope using the SDK
 
 ### Example 2: Manual Publish
 
@@ -52,7 +55,7 @@ You can test the setup using standard MQTT tools:
 # Subscribe to all Keelson topics
 mosquitto_sub -h localhost -t 'vessel/+/+/pubsub/#' -v
 
-# Publish a raw test message (this won't be a proper Keelson envelope)
+# Publish a raw test message (note: this won't be a proper Keelson envelope)
 mosquitto_pub -h localhost -t 'vessel/@v1/test/pubsub/test/manual' -m 'test'
 ```
 
@@ -63,35 +66,119 @@ mosquitto_pub -h localhost -t 'vessel/@v1/test/pubsub/test/manual' -m 'test'
 3. Browse topics and subscribe to `vessel/#`
 4. Publish test messages
 
-## Working with Protobuf Payloads
+## Working with Keelson SDK in Function Nodes
 
-To send properly formatted protobuf messages, you'll need to:
+The Keelson JS SDK is available in all Node-RED function nodes. Here are practical examples:
 
-1. Define your message using one of the Keelson proto files
-2. Serialize it to a Buffer
-3. Pass it to the Keelson Publish node
-
-### Example: Publishing a Primitive Float Value
+### Example 1: Encoding and Publishing a Typed Payload
 
 ```javascript
-// In a function node
-const protobuf = require('protobufjs');
+const keelson = global.get('keelson') || require('keelson-js');
 
-// Load the Primitives proto
-const root = await protobuf.load('/usr/src/node-red/protos/payloads/Primitives.proto');
-const FloatValue = root.lookupType('payloads.FloatValue');
-
-// Create the message
-const message = FloatValue.create({
+// Create a FloatValue payload
+const payload = {
     value: 42.5
+};
+
+// Encode it using the SDK
+const encoded = keelson.encodePayloadFromTypeName('payloads.FloatValue', payload);
+
+// The keelson-publish node will automatically wrap this in an envelope
+msg.payload = Buffer.from(encoded);
+msg.topic = 'vessel/@v1/my_boat/pubsub/rudder_angle_deg/rudder';
+
+return msg;
+```
+
+### Example 2: Decoding a Received Payload
+
+```javascript
+const keelson = global.get('keelson') || require('keelson-js');
+
+// msg.payload contains the unpacked payload from keelson-subscribe
+// Decode it based on the subject
+try {
+    const decoded = keelson.decodePayloadFromTypeName(
+        'payloads.FloatValue',
+        new Uint8Array(msg.payload)
+    );
+
+    node.log(`Received value: ${decoded.value}`);
+    msg.decodedPayload = decoded;
+} catch (err) {
+    node.error(`Failed to decode: ${err.message}`);
+}
+
+return msg;
+```
+
+### Example 3: Validating and Constructing Keys
+
+```javascript
+const keelson = global.get('keelson') || require('keelson-js');
+
+// Construct a proper Keelson key
+const key = keelson.construct_pubSub_key({
+    basePath: "vessel",
+    majorVersion: 1,
+    entityId: "atlantic_explorer",
+    subject: "vessel_position",
+    sourceId: "gps/main"
 });
 
-// Encode to Buffer
-const buffer = FloatValue.encode(message).finish();
+node.log(`Generated key: ${key}`);
+// Output: vessel/@v1/atlantic_explorer/pubsub/vessel_position/gps/main
 
-// Set as payload
-msg.payload = buffer;
+// Validate the subject
+if (keelson.isSubjectWellKnown('vessel_position')) {
+    const schema = keelson.getSubjectSchema('vessel_position');
+    node.log(`Schema: ${JSON.stringify(schema)}`);
+}
+
+msg.topic = key;
+return msg;
+```
+
+### Example 4: Using encloseFromTypeName (All-in-One)
+
+```javascript
+const keelson = global.get('keelson') || require('keelson-js');
+
+// Create your payload
+const payload = {
+    value: 15.7
+};
+
+// Encode AND enclose in one step
+const envelope = keelson.encloseFromTypeName('payloads.FloatValue', payload);
+
+// This is ready to publish directly to MQTT (bypassing keelson-publish node)
+msg.payload = Buffer.from(envelope);
 msg.topic = 'vessel/@v1/my_boat/pubsub/rudder_angle_deg/rudder';
+
+return msg;
+```
+
+### Example 5: Parsing Received Keys
+
+```javascript
+const keelson = global.get('keelson') || require('keelson-js');
+
+// The keelson-subscribe node already provides this in msg.keelson,
+// but you can also parse manually
+const parts = keelson.parse_pubsub_key(msg.topic);
+
+if (parts) {
+    node.log(`Base Path: ${parts.basePath}`);
+    node.log(`Entity ID: ${parts.entityId}`);
+    node.log(`Subject: ${parts.subject}`);
+    node.log(`Source ID: ${parts.sourceId}`);
+
+    // Use the parsed information
+    if (parts.subject === 'rudder_angle_deg') {
+        // Handle rudder angle data
+    }
+}
 
 return msg;
 ```
@@ -122,13 +209,77 @@ Remember to follow Keelson key space conventions:
 - `shore/@v1/control_station/pubsub/command/operator_1`
 - `buoy/@v1/weather_buoy_42/pubsub/wave_height_m/sensor`
 
+## Complete Example: Temperature Sensor Flow
+
+Here's a complete example that demonstrates encoding, publishing, subscribing, and decoding:
+
+### Function Node: "Generate Temperature Data"
+```javascript
+const keelson = global.get('keelson') || require('keelson-js');
+
+// Generate random temperature reading
+const temperature = 20 + Math.random() * 10; // 20-30°C
+
+// Create FloatValue payload
+const payload = { value: temperature };
+
+// Encode using SDK
+const encoded = keelson.encodePayloadFromTypeName('payloads.FloatValue', payload);
+
+// Construct proper key
+const topic = keelson.construct_pubSub_key({
+    basePath: "vessel",
+    majorVersion: 1,
+    entityId: "my_boat",
+    subject: "temperature_c",
+    sourceId: "engine_room/sensor_1"
+});
+
+msg.payload = Buffer.from(encoded);
+msg.topic = topic;
+
+return msg;
+```
+
+### Function Node: "Process Temperature"
+```javascript
+const keelson = global.get('keelson') || require('keelson-js');
+
+// Decode the payload from keelson-subscribe
+try {
+    const decoded = keelson.decodePayloadFromTypeName(
+        'payloads.FloatValue',
+        new Uint8Array(msg.payload)
+    );
+
+    const temp = decoded.value;
+    node.log(`Temperature: ${temp.toFixed(1)}°C`);
+
+    // Check for high temperature
+    if (temp > 28) {
+        node.warn(`High temperature alert: ${temp.toFixed(1)}°C`);
+        msg.alert = true;
+    }
+
+    msg.temperature = temp;
+    msg.decodedPayload = decoded;
+
+} catch (err) {
+    node.error(`Failed to decode temperature: ${err.message}`);
+    return null;
+}
+
+return msg;
+```
+
 ## Debugging Tips
 
 ### Enable Debug Messages
 
 Add debug nodes to view:
-- Incoming envelope metadata
-- Unpacked payloads
+- Incoming envelope metadata (`msg.envelope`)
+- Parsed key components (`msg.keelson`)
+- Unpacked payloads (`msg.payload`)
 - Publish confirmations
 
 ### Check MQTT Connection
@@ -155,56 +306,65 @@ curl http://localhost:8000/@/router/*/linkstate/routers
 docker-compose logs -f node-red
 ```
 
-## Advanced: Custom Proto Messages
+### Test SDK Functions in Function Node
 
-If you want to create custom protobuf messages:
-
-1. Add your `.proto` file to `protos/payloads/`
-2. Rebuild the Node-RED container:
-   ```bash
-   docker-compose build node-red
-   docker-compose up -d node-red
-   ```
-3. Use protobufjs in function nodes to encode/decode your messages
-
-### Example Custom Proto
-
-Create `protos/payloads/MyCustom.proto`:
-```protobuf
-syntax = "proto3";
-
-package payloads;
-
-message VesselPosition {
-    double latitude = 1;
-    double longitude = 2;
-    float heading = 3;
-    float speed = 4;
-}
-```
-
-Then in a function node:
+Add a function node with this code to test SDK availability:
 ```javascript
-const protobuf = require('protobufjs');
-const root = await protobuf.load('/usr/src/node-red/protos/payloads/MyCustom.proto');
-const VesselPosition = root.lookupType('payloads.VesselPosition');
+const keelson = global.get('keelson') || require('keelson-js');
 
-const position = VesselPosition.create({
-    latitude: 57.7089,
-    longitude: 11.9746,
-    heading: 180.0,
-    speed: 12.5
+node.log('SDK Functions Available:');
+node.log('- enclose');
+node.log('- uncover');
+node.log('- encodePayloadFromTypeName');
+node.log('- decodePayloadFromTypeName');
+node.log('- construct_pubSub_key');
+node.log('- parse_pubsub_key');
+node.log('- isSubjectWellKnown');
+
+// Test key construction
+const testKey = keelson.construct_pubSub_key({
+    basePath: "test",
+    majorVersion: 1,
+    entityId: "test_entity",
+    subject: "test_subject",
+    sourceId: "test_source"
 });
 
-msg.payload = VesselPosition.encode(position).finish();
-msg.topic = 'vessel/@v1/my_boat/pubsub/vessel_position/gps';
+node.log(`Test key: ${testKey}`);
 
 return msg;
 ```
 
+## Available Protobuf Message Types
+
+The SDK includes all Keelson protobuf definitions. Common types you can use:
+
+### Primitives (payloads.*)
+- `FloatValue` - Single float value
+- `IntValue` - Integer value
+- `StringValue` - String value
+- `BoolValue` - Boolean value
+- `TimestampedBytes` - Raw bytes with timestamp
+
+### Maritime-Specific (payloads.*)
+- `VesselNavStatus` - Vessel navigation status
+- `VesselType` - Vessel type classification
+- `RadarReading` - Radar sensor data
+- `LocationFixQuality` - GPS fix quality
+
+### General (payloads.*)
+- `Alarm` - Alarm messages
+- `Audio` - Audio data
+- `Geojson` - Geographic JSON data
+- `NetworkStatus` - Network connectivity
+- `SensorStatus` - Sensor health
+
+See the [Keelson repository](https://github.com/RISE-Maritime/keelson/tree/main/messages/payloads) for complete definitions.
+
 ## Next Steps
 
-- Explore the Keelson proto definitions in `protos/`
+- Explore the Keelson JS SDK documentation
 - Read the [Keelson Protocol Specification](https://github.com/RISE-Maritime/keelson/blob/main/docs/protocol-specification.md)
-- Check out `protos/subjects.yaml` for standard subject naming conventions
+- Check out the subjects registry for standard naming conventions
 - Build your own flows integrating with sensors, databases, or APIs
+- Experiment with different protobuf message types

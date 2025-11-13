@@ -2,26 +2,20 @@ FROM nodered/node-red:latest
 
 USER root
 
-# Install build dependencies
+# Install build dependencies (needed for native modules in keelson-js)
 RUN apk add --no-cache \
     python3 \
     make \
     g++ \
     git
 
-# Create directories for protos and custom nodes
-RUN mkdir -p /usr/src/node-red/protos/payloads
+# Create directory for custom nodes
 RUN mkdir -p /usr/src/node-red/custom-nodes
-
-# Copy proto definitions
-COPY protos/Envelope.proto /usr/src/node-red/protos/
-COPY protos/subjects.yaml /usr/src/node-red/protos/
-COPY protos/payloads/*.proto /usr/src/node-red/protos/payloads/
 
 # Copy custom nodes
 COPY node-red/custom-nodes/keelson-envelope /usr/src/node-red/custom-nodes/keelson-envelope
 
-# Install custom node dependencies
+# Install custom node dependencies (includes keelson-js SDK)
 WORKDIR /usr/src/node-red/custom-nodes/keelson-envelope
 RUN npm install
 

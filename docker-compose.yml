@@ -32,9 +32,8 @@ services:
       - TZ=UTC
     volumes:
       - node-red-data:/data
-      # Mount custom nodes and protos for development
+      # Mount custom nodes for development
       - ./node-red/custom-nodes:/usr/src/node-red/custom-nodes:ro
-      - ./protos:/usr/src/node-red/protos:ro
     depends_on:
       - zenoh-mqtt-bridge
     restart: unless-stopped
