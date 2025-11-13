@@ -1,0 +1,25 @@
+{
+  "name": "node-red-contrib-keelson-envelope",
+  "version": "1.0.0",
+  "description": "Node-RED nodes for handling Keelson protocol envelopes",
+  "main": "index.js",
+  "keywords": [
+    "node-red",
+    "keelson",
+    "protobuf",
+    "envelope",
+    "mqtt"
+  ],
+  "node-red": {
+    "nodes": {
+      "keelson-subscribe": "keelson-subscribe.js",
+      "keelson-publish": "keelson-publish.js"
+    }
+  },
+  "dependencies": {
+    "protobufjs": "^7.2.5",
+    "mqtt": "^5.3.0"
+  },
+  "author": "RISE Maritime",
+  "license": "MIT"
+}

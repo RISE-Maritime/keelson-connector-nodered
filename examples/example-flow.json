@@ -1,0 +1,142 @@
+[
+    {
+        "id": "example_flow_tab",
+        "type": "tab",
+        "label": "Keelson Example Flow",
+        "disabled": false,
+        "info": "Example flow demonstrating Keelson envelope subscribe and publish nodes"
+    },
+    {
+        "id": "keelson_subscribe_example",
+        "type": "keelson-subscribe",
+        "z": "example_flow_tab",
+        "name": "Subscribe to Rudder Angle",
+        "broker": "zenoh-mqtt-bridge",
+        "port": 1883,
+        "topic": "vessel/@v1/my_boat/pubsub/rudder_angle_deg/rudder",
+        "qos": 0,
+        "x": 180,
+        "y": 100,
+        "wires": [
+            ["debug_node", "process_function"]
+        ]
+    },
+    {
+        "id": "debug_node",
+        "type": "debug",
+        "z": "example_flow_tab",
+        "name": "Debug Received",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "x": 430,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "process_function",
+        "type": "function",
+        "z": "example_flow_tab",
+        "name": "Process Data",
+        "func": "// Example: Transform the data\n// In a real scenario, you'd decode the protobuf payload here\n\nmsg.payload = msg.payload;\nmsg.topic = \"vessel/@v1/my_boat/pubsub/processed_data/processor\";\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 430,
+        "y": 140,
+        "wires": [
+            ["keelson_publish_example"]
+        ]
+    },
+    {
+        "id": "keelson_publish_example",
+        "type": "keelson-publish",
+        "z": "example_flow_tab",
+        "name": "Publish Processed Data",
+        "broker": "zenoh-mqtt-bridge",
+        "port": 1883,
+        "topic": "vessel/@v1/my_boat/pubsub/processed_data/processor",
+        "qos": 0,
+        "retain": false,
+        "x": 680,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "inject_test",
+        "type": "inject",
+        "z": "example_flow_tab",
+        "name": "Manual Test Message",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "vessel/@v1/my_boat/pubsub/test_message/manual",
+        "payload": "{\"test\": \"data\", \"value\": 42}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 240,
+        "wires": [
+            ["convert_to_buffer"]
+        ]
+    },
+    {
+        "id": "convert_to_buffer",
+        "type": "function",
+        "z": "example_flow_tab",
+        "name": "Convert to Buffer",
+        "func": "// Convert JSON to Buffer for envelope\nmsg.payload = Buffer.from(JSON.stringify(msg.payload));\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 430,
+        "y": 240,
+        "wires": [
+            ["keelson_publish_test"]
+        ]
+    },
+    {
+        "id": "keelson_publish_test",
+        "type": "keelson-publish",
+        "z": "example_flow_tab",
+        "name": "Publish Test Message",
+        "broker": "zenoh-mqtt-bridge",
+        "port": 1883,
+        "topic": "vessel/@v1/my_boat/pubsub/test_message/manual",
+        "qos": 0,
+        "retain": false,
+        "x": 680,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "comment_1",
+        "type": "comment",
+        "z": "example_flow_tab",
+        "name": "Example 1: Subscribe and Republish",
+        "info": "This flow subscribes to a Keelson topic,\nprocesses the data, and republishes it.",
+        "x": 200,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "comment_2",
+        "type": "comment",
+        "z": "example_flow_tab",
+        "name": "Example 2: Manual Publish",
+        "info": "This flow allows you to manually inject\ntest messages and publish them via Keelson.",
+        "x": 180,
+        "y": 200,
+        "wires": []
+    }
+]

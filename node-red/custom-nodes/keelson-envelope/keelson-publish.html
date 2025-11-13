@@ -1,0 +1,74 @@
+<script type="text/javascript">
+    RED.nodes.registerType('keelson-publish',{
+        category: 'keelson',
+        color: '#a6bbcf',
+        defaults: {
+            name: {value:""},
+            broker: {value:"zenoh-mqtt-bridge", required:true},
+            port: {value:1883, required:true, validate:RED.validators.number()},
+            topic: {value:"", required:true},
+            qos: {value:0},
+            retain: {value:false}
+        },
+        inputs: 1,
+        outputs: 0,
+        icon: "envelope.svg",
+        align: "right",
+        label: function() {
+            return this.name || "keelson-publish";
+        },
+        labelStyle: function() {
+            return this.name ? "node_label_italic" : "";
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="keelson-publish">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    <div class="form-row">
+        <label for="node-input-broker"><i class="fa fa-globe"></i> Broker</label>
+        <input type="text" id="node-input-broker" placeholder="zenoh-mqtt-bridge">
+    </div>
+    <div class="form-row">
+        <label for="node-input-port"><i class="fa fa-random"></i> Port</label>
+        <input type="text" id="node-input-port" placeholder="1883">
+    </div>
+    <div class="form-row">
+        <label for="node-input-topic"><i class="fa fa-tasks"></i> Topic</label>
+        <input type="text" id="node-input-topic" placeholder="vessel/pubsub/subject/source">
+    </div>
+    <div class="form-row">
+        <label for="node-input-qos"><i class="fa fa-empire"></i> QoS</label>
+        <select id="node-input-qos">
+            <option value="0">0</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="node-input-retain"><i class="fa fa-repeat"></i> Retain</label>
+        <input type="checkbox" id="node-input-retain" style="display:inline-block; width:auto; vertical-align:top;">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="keelson-publish">
+    <p>Wraps payload in a Keelson envelope and publishes to MQTT topic.</p>
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">buffer | object</span></dt>
+        <dd>The protobuf message or raw bytes to enclose in the envelope.</dd>
+        <dt class="optional">topic <span class="property-type">string</span></dt>
+        <dd>Optionally override the configured MQTT topic.</dd>
+    </dl>
+    <h3>Details</h3>
+    <p>This node automatically wraps the incoming payload in a Keelson envelope with a timestamp
+    and publishes it to the configured MQTT topic. The payload should be a Buffer containing
+    a serialized protobuf message.</p>
+    <h3>References</h3>
+    <ul>
+        <li><a href="https://github.com/RISE-Maritime/keelson">Keelson Protocol</a></li>
+    </ul>
+</script>
