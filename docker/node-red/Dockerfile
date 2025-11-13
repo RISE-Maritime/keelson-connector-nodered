@@ -9,25 +9,23 @@ RUN apk add --no-cache \
     g++ \
     git
 
-# Create directory for custom nodes
-RUN mkdir -p /usr/src/node-red/custom-nodes
+# Copy custom nodes to a temporary location
+COPY node-red/custom-nodes /usr/src/node-red/custom-nodes
 
-# Copy custom nodes
-COPY node-red/custom-nodes/keelson-envelope /usr/src/node-red/custom-nodes/keelson-envelope
-
-# Install custom node dependencies (includes keelson-js SDK)
-WORKDIR /usr/src/node-red/custom-nodes/keelson-envelope
-RUN npm install
-
-# Install the custom nodes into Node-RED user directory (where Node-RED looks for nodes)
+# Copy package.json to the WORKDIR so npm builds all
+# of your added nodes modules for Node-RED
 WORKDIR /data
-RUN npm install /usr/src/node-red/custom-nodes/keelson-envelope
+COPY package.json /data
+RUN npm install --unsafe-perm --no-update-notifier --no-fund --only=production
 
 # Fix ownership of the data directory
 RUN chown -R node-red:node-red /data
 
 # Switch to node-red user for runtime
 USER node-red
+
+# Set working directory back to Node-RED default
+WORKDIR /usr/src/node-red
 
 # Expose Node-RED port
 EXPOSE 1880
