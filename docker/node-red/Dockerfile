@@ -19,12 +19,12 @@ COPY node-red/custom-nodes/keelson-envelope /usr/src/node-red/custom-nodes/keels
 WORKDIR /usr/src/node-red/custom-nodes/keelson-envelope
 RUN npm install
 
-# Install the custom nodes into Node-RED (still as root to avoid permission issues)
-WORKDIR /usr/src/node-red
+# Install the custom nodes into Node-RED user directory (where Node-RED looks for nodes)
+WORKDIR /data
 RUN npm install /usr/src/node-red/custom-nodes/keelson-envelope
 
-# Fix ownership of installed node modules
-RUN chown -R node-red:node-red /usr/src/node-red/node_modules
+# Fix ownership of the data directory
+RUN chown -R node-red:node-red /data
 
 # Switch to node-red user for runtime
 USER node-red
