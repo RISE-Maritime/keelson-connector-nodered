@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  zenoh-bridge-websocket:
+    image: eclipse/zenoh:1.6.2
+    container_name: zenoh-bridge-websocket
+    environment:
+      - RUST_LOG=info
+    command: >
+      --cfg='mode:"peer"'  --cfg='plugins/remote_api/websocket_port:10000'
+    volumes:
+      - ./zenoh_plugins:/root/.zenoh
+    restart: unless-stopped
+    network_mode: host
+
+  # Node-RED with Keelson envelope support
+  node-red:
+    build: .
+    container_name: node-red
+    environment:
+      - TZ=Europe/Stockholm
+      - NODE_OPTIONS=--experimental-wasm-modules --no-warnings
+    depends_on:
+      - zenoh-bridge-websocket
+    restart: unless-stopped
+    network_mode: host
