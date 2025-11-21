@@ -1,49 +1,26 @@
 version: '3.8'
 
 services:
-  # Zenoh MQTT Bridge - connects Zenoh and MQTT protocols
-  zenoh-mqtt-bridge:
-    image: eclipse/zenoh-bridge-mqtt:latest
-    container_name: zenoh-mqtt-bridge
-    ports:
-      - "1883:1883"    # MQTT port
-      - "7447:7447"    # Zenoh peer port
-      - "8000:8000"    # REST API port (optional)
+  zenoh-bridge-websocket:
+    image: eclipse/zenoh:1.6.2
+    container_name: zenoh-bridge-websocket
     environment:
       - RUST_LOG=info
     command: >
-      --mode peer
-      --listen tcp/0.0.0.0:7447
-      --port 1883
-      --rest-http-port 8000
+      --cfg='mode:"peer"'  --cfg='plugins/remote_api/websocket_port:10000'
+    volumes:
+      - ./zenoh_plugins:/root/.zenoh
     restart: unless-stopped
-    networks:
-      - keelson-network
+    network_mode: host
 
   # Node-RED with Keelson envelope support
   node-red:
-    build:
-      context: .
-      dockerfile: docker/node-red/Dockerfile
+    build: .
     container_name: node-red
-    ports:
-      - "1880:1880"    # Node-RED UI
     environment:
-      - TZ=UTC
-    volumes:
-      - node-red-data:/data
-      # Mount custom nodes for development
-      - ./node-red/custom-nodes:/usr/src/node-red/custom-nodes:ro
+      - TZ=Europe/Stockholm
+      - NODE_OPTIONS=--experimental-wasm-modules --no-warnings
     depends_on:
-      - zenoh-mqtt-bridge
+      - zenoh-bridge-websocket
     restart: unless-stopped
-    networks:
-      - keelson-network
-
-volumes:
-  node-red-data:
-    driver: local
-
-networks:
-  keelson-network:
-    driver: bridge
+    network_mode: host
